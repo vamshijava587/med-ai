@@ -36,6 +36,11 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
+/**
+ * The core orchestration service for handling chat interactions.
+ * This class coordinates the flow of a chat request from user input to an AI-generated response,
+ * including routing, RAG (Retrieval-Augmented Generation), tool execution, LLM calls, and evaluation.
+ */
 @Service
 public class ChatOrchestratorService {
 
@@ -53,6 +58,10 @@ public class ChatOrchestratorService {
     private final PlatformMetricsService platformMetricsService;
     private final ObjectMapper objectMapper;
 
+    /**
+     * Constructor for ChatOrchestratorService.
+     * Uses constructor injection for its many dependencies.
+     */
     public ChatOrchestratorService(AppProperties properties,
                                    LlmRoutingService routingService,
                                    LlmGateway llmGateway,
@@ -81,6 +90,19 @@ public class ChatOrchestratorService {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * Orchestrates a single chat request and returns a complete ChatResponse.
+     * This method:
+     * 1. Routes the message to an agent type.
+     * 2. Retrieves the user's profile and conversation history.
+     * 3. Saves the user's message to the database.
+     * 4. Builds the execution context (including RAG).
+     * 5. Executes the primary and/or fallback LLMs.
+     * 6. Persists the AI's response and audit logs.
+     *
+     * @param request The chat request from the user.
+     * @return A Mono emitting the final ChatResponse.
+     */
     public Mono<ChatResponse> chat(ChatRequest request) {
         var startedAt = Instant.now();
         var routingMono = routingService.route(request.message(), request.metadata());
@@ -105,6 +127,14 @@ public class ChatOrchestratorService {
             });
     }
 
+    /**
+     * Orchestrates a chat request and returns a stream of ChatChunks.
+     * It wraps the synchronous `chat()` method and simulates a stream by splitting the answer into words.
+     * In a production scenario, this would ideally use the LLM's native streaming capabilities.
+     *
+     * @param request The chat request from the user.
+     * @return A Flux emitting ChatChunk objects.
+     */
     public Flux<ChatChunk> stream(ChatRequest request) {
         return chat(request)
             .flatMapMany(response -> {
@@ -127,6 +157,16 @@ public class ChatOrchestratorService {
             });
     }
 
+    /**
+     * Constructs the AgentExecutionContext by enriching it with RAG (Retrieval-Augmented Generation) context.
+     * It searches the vector database for knowledge relevant to the user's question.
+     *
+     * @param request          The original chat request.
+     * @param routingDecision The decision on which agent type to use.
+     * @param userProfile      The profile of the user.
+     * @param history          The recent conversation history.
+     * @return A Mono emitting the built AgentExecutionContext.
+     */
     private Mono<AgentExecutionContext> buildContext(ChatRequest request,
                                                      RoutingDecision routingDecision,
                                                      UserProfile userProfile,
@@ -156,6 +196,18 @@ public class ChatOrchestratorService {
                 request.metadata()));
     }
 
+    /**
+     * Executes the agent logic with a robust fallback mechanism.
+     * It tries:
+     * 1. Primary Model (Ollama).
+     * 2. If primary fails confidence thresholds, it tries the Secondary Model (OpenAI) IF enabled.
+     * 3. If everything fails, it uses a Fallback Agent or a static safety message.
+     *
+     * @param request          The original chat request.
+     * @param routingDecision The agent routing decision.
+     * @param context          The execution context with RAG data.
+     * @return A Mono emitting the validated execution result.
+     */
     private Mono<ValidatedExecution> executeWithFallbacks(ChatRequest request,
                                                           RoutingDecision routingDecision,
                                                           AgentExecutionContext context) {
@@ -168,6 +220,9 @@ public class ChatOrchestratorService {
                 if (!primary.evaluation().shouldFallback(properties.getEvaluation().getConfidenceThreshold())) {
                     return Mono.just(primary);
                 }
+                if (!llmGateway.isAvailable(ModelProvider.OPENAI)) {
+                    return Mono.just(primary);
+                }
                 return executeAndEvaluate(context.agentType(), request, context, ModelProvider.OPENAI)
                     .flatMap(openAiAttempt -> {
                         if (!openAiAttempt.evaluation().shouldFallback(properties.getEvaluation().getConfidenceThreshold())) {
@@ -177,10 +232,24 @@ public class ChatOrchestratorService {
                             .onErrorResume(unused -> Mono.just(buildStaticFallback(request.message())));
                     });
             })
-            .onErrorResume(primaryFailure -> executeAndEvaluate(context.agentType(), request, context, ModelProvider.OPENAI)
-                .onErrorResume(openAiFailure -> Mono.just(buildStaticFallback(request.message()))));
+            .onErrorResume(primaryFailure -> {
+                if (llmGateway.isAvailable(ModelProvider.OPENAI)) {
+                    return executeAndEvaluate(context.agentType(), request, context, ModelProvider.OPENAI)
+                        .onErrorResume(openAiFailure -> Mono.just(buildStaticFallback(request.message())));
+                }
+                return Mono.just(buildStaticFallback(request.message()));
+            });
     }
 
+    /**
+     * Executes an agent and then evaluates the result using the EvaluationAdvisor.
+     *
+     * @param agentType The type of agent being executed.
+     * @param request   The chat request.
+     * @param originalContext The execution context.
+     * @param provider  The LLM provider to use.
+     * @return A Mono emitting a ValidatedExecution (result + evaluation).
+     */
     private Mono<ValidatedExecution> executeAndEvaluate(AgentType agentType,
                                                         ChatRequest request,
                                                         AgentExecutionContext originalContext,
@@ -199,6 +268,9 @@ public class ChatOrchestratorService {
                 .map(evaluation -> new ValidatedExecution(execution, evaluation)));
     }
 
+    /**
+     * Initiates the iterative agent execution loop.
+     */
     private Mono<AgentExecutionResult> executeAgent(AgentType agentType,
                                                     ChatRequest request,
                                                     AgentExecutionContext context,
@@ -206,6 +278,19 @@ public class ChatOrchestratorService {
         return executeAgentLoop(agentType, request, context, provider, 0, new ArrayList<>(), new ArrayList<>());
     }
 
+    /**
+     * Executes the agent loop which handles tool calls.
+     * If the LLM requests a tool call, this method executes it and passes the output back into the next iteration.
+     *
+     * @param agentType    The agent type.
+     * @param request      The chat request.
+     * @param context      The execution context.
+     * @param provider     The LLM provider.
+     * @param iteration    The current loop iteration (to prevent infinite loops).
+     * @param toolHistory  History of tool calls and results in this request.
+     * @param toolNames    Names of tools used.
+     * @return A Mono emitting the final AgentExecutionResult.
+     */
     private Mono<AgentExecutionResult> executeAgentLoop(AgentType agentType,
                                                         ChatRequest request,
                                                         AgentExecutionContext context,
@@ -245,6 +330,9 @@ public class ChatOrchestratorService {
             });
     }
 
+    /**
+     * Constructs the multi-part system prompt by concatenating base prompts, guardrails, and tool instructions.
+     */
     private String buildSystemPrompt(AgentType agentType,
                                      AppProperties.AgentDefinition definition,
                                      ResponseDetailLevel detailLevel) {
@@ -261,6 +349,9 @@ public class ChatOrchestratorService {
             "Agent name: " + agentType.name());
     }
 
+    /**
+     * Constructs the user prompt by rendering a template with user profile, history, and RAG context.
+     */
     private String buildUserPrompt(ChatRequest request,
                                    AgentExecutionContext context,
                                    List<ToolExecutionResult> toolHistory) {
@@ -274,6 +365,10 @@ public class ChatOrchestratorService {
         ));
     }
 
+    /**
+     * Attempts to parse the JSON response from the LLM into a ToolLoopResponse.
+     * If parsing fails (e.g., LLM returned plain text), it treats it as a FINAL answer.
+     */
     private ToolLoopResponse parseToolLoopResponse(LlmResponse response) {
         try {
             return objectMapper.readValue(response.content(), ToolLoopResponse.class);
@@ -283,6 +378,9 @@ public class ChatOrchestratorService {
         }
     }
 
+    /**
+     * Persists the conversation and audit data to the database and builds the final ChatResponse object.
+     */
     private Mono<ChatResponse> persistAndBuildResponse(ChatRequest request,
                                                        ValidatedExecution validatedExecution,
                                                        Instant startedAt) {
@@ -320,6 +418,9 @@ public class ChatOrchestratorService {
                 Instant.now()));
     }
 
+    /**
+     * Builds a static safety message used when LLM providers are failing.
+     */
     private ValidatedExecution buildStaticFallback(String userQuestion) {
         var answer = """
             I cannot provide a fully grounded answer right now. Please use this as general information only, avoid making medication changes on your own, and contact a licensed clinician or emergency services if symptoms are severe or worsening.
@@ -343,6 +444,9 @@ public class ChatOrchestratorService {
                 List.of("Fallback agent response was generated without a validated grounded answer.")));
     }
 
+    /**
+     * Resolves the configured agent definition (prompts, etc.) for a given AgentType.
+     */
     private AppProperties.AgentDefinition resolveAgentDefinition(AgentType agentType) {
         var definition = properties.getAgents().get(agentType.name().toLowerCase());
         if (definition == null) {
@@ -351,6 +455,9 @@ public class ChatOrchestratorService {
         return definition;
     }
 
+    /**
+     * Formats the user profile data for inclusion in the prompt.
+     */
     private String formatUserProfile(UserProfile userProfile) {
         return """
             User ID: %s
@@ -369,6 +476,9 @@ public class ChatOrchestratorService {
             Optional.ofNullable(userProfile.notes()).orElse("None"));
     }
 
+    /**
+     * Formats the RAG context data for inclusion in the prompt.
+     */
     private String formatRagContext(AgentExecutionContext context) {
         if (context.retrievedContext().isEmpty()) {
             return "No retrieved knowledge context.";
@@ -378,6 +488,9 @@ public class ChatOrchestratorService {
             .collect(Collectors.joining("\n"));
     }
 
+    /**
+     * Formats the tool call history for inclusion in the prompt.
+     */
     private String formatToolHistory(List<ToolExecutionResult> toolHistory) {
         if (toolHistory.isEmpty()) {
             return "No tool calls have been executed yet.";
@@ -387,14 +500,24 @@ public class ChatOrchestratorService {
             .collect(Collectors.joining("\n"));
     }
 
+    /**
+     * Provides a rough estimation of token count based on string length.
+     * Assumes ~4 characters per token.
+     */
     private int estimateTokens(String content) {
         return Math.max(1, (int) Math.ceil(content.length() / 4.0d));
     }
 
+    /**
+     * Selects the preferred fallback LLM provider.
+     */
     private ModelProvider preferredFallbackProvider() {
         return llmGateway.isAvailable(ModelProvider.OPENAI) ? ModelProvider.OPENAI : ModelProvider.OLLAMA;
     }
 
+    /**
+     * Creates an empty user profile object.
+     */
     private UserProfile emptyProfile(String userId) {
         return new UserProfile(userId, "Unknown", List.of(), List.of(), null, null, null);
     }

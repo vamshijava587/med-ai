@@ -8,11 +8,14 @@ spring:
   ai:
     ollama:
       base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      # Disable health indicator so startup doesn't fail if Ollama is still loading models
+      init:
+        pull-model-strategy: never
       embedding:
         options:
           model: ${OLLAMA_EMBEDDING_MODEL:nomic-embed-text}
     openai:
-      api-key: ${OPENAI_API_KEY:}
+      api-key: ${OPENAI_API_KEY:disabled}
       embedding:
         options:
           model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}

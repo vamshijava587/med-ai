@@ -1,6 +1,8 @@
 services:
+
   mysql:
     image: mysql:8.4
+    restart: unless-stopped
     environment:
       MYSQL_DATABASE: med_ai
       MYSQL_USER: medai
@@ -14,64 +16,91 @@ services:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
       interval: 10s
       timeout: 5s
-      retries: 12
+      retries: 15
+      start_period: 30s
 
   qdrant:
     image: qdrant/qdrant:v1.13.2
+    restart: unless-stopped
     ports:
       - "6333:6333"
     volumes:
       - qdrant-data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
 
   ollama:
     image: ollama/ollama:latest
+    restart: unless-stopped
     ports:
       - "11434:11434"
     volumes:
       - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
 
   ollama-init:
     image: ollama/ollama:latest
     depends_on:
-      - ollama
+      ollama:
+        condition: service_healthy
+    restart: "no"
     entrypoint: ["/bin/sh", "-c"]
     command: >
-      "sleep 8 &&
-       OLLAMA_HOST=http://ollama:11434 ollama pull ${OLLAMA_CHAT_MODEL:-llama3.1:8b} &&
+      "sleep 10 &&
+       OLLAMA_HOST=http://ollama:11434 ollama pull ${OLLAMA_CHAT_MODEL:-llama3} &&
        OLLAMA_HOST=http://ollama:11434 ollama pull ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}"
 
   vector-data-service:
     build:
       context: .
       dockerfile: vector-data-service/Dockerfile
+    restart: unless-stopped
     environment:
       QDRANT_URL: http://qdrant:6333
       OLLAMA_BASE_URL: http://ollama:11434
       JWT_SECRET: ${JWT_SECRET:-change-this-32-char-jwt-secret-key}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-disabled}
     depends_on:
-      - qdrant
-      - ollama-init
+      qdrant:
+        condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
     ports:
       - "8082:8082"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8082/actuator/health/liveness || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 90s
 
   main-orchestrator:
     build:
       context: .
       dockerfile: main-orchestrator/Dockerfile
+    restart: unless-stopped
     environment:
-      MYSQL_URL: jdbc:mysql://mysql:3306/med_ai
+      MYSQL_URL: jdbc:mysql://mysql:3306/med_ai?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
       MYSQL_USERNAME: medai
       MYSQL_PASSWORD: medai
       VECTOR_SERVICE_URL: http://vector-data-service:8082
       OLLAMA_BASE_URL: http://ollama:11434
-      JWT_SECRET: ${JWT_SECRET:-change-this-32-char-jwt-secret-key}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:-secret}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-disabled}
     depends_on:
       mysql:
         condition: service_healthy
       vector-data-service:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "8081:8081"
 
@@ -79,16 +108,19 @@ services:
     build:
       context: .
       dockerfile: api-gateway/Dockerfile
+    restart: unless-stopped
     environment:
       ORCHESTRATOR_URL: http://main-orchestrator:8081
       JWT_SECRET: ${JWT_SECRET:-change-this-32-char-jwt-secret-key}
     depends_on:
-      - main-orchestrator
+      main-orchestrator:
+        condition: service_started
     ports:
       - "8080:8080"
 
   prometheus:
     image: prom/prometheus:v2.54.1
+    restart: unless-stopped
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
     volumes:
@@ -99,6 +131,7 @@ services:
 
   grafana:
     image: grafana/grafana:11.2.0
+    restart: unless-stopped
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
