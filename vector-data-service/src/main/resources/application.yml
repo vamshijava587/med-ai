@@ -1,0 +1,35 @@
+server:
+  port: 8082
+  shutdown: graceful
+
+spring:
+  application:
+    name: vector-data-service
+  ai:
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      embedding:
+        options:
+          model: ${OLLAMA_EMBEDDING_MODEL:nomic-embed-text}
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      embedding:
+        options:
+          model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+vector:
+  qdrant-url: ${QDRANT_URL:http://localhost:6333}
+  vector-size: ${VECTOR_SIZE:768}
+  default-chunk-size-tokens: 220
+  default-chunk-overlap-tokens: 40
+  jwt-secret: ${JWT_SECRET:change-this-32-char-jwt-secret-key}

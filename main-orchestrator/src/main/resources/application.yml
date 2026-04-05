@@ -1,0 +1,102 @@
+server:
+  port: 8081
+  shutdown: graceful
+
+spring:
+  application:
+    name: main-orchestrator
+  datasource:
+    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/med_ai}
+    username: ${MYSQL_USERNAME:medai}
+    password: ${MYSQL_PASSWORD:medai}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  ai:
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      chat:
+        options:
+          model: ${OLLAMA_CHAT_MODEL:llama3.1:8b}
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      chat:
+        options:
+          model: ${OPENAI_CHAT_MODEL:gpt-4o-mini}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  level:
+    root: INFO
+    com.medai: INFO
+
+app:
+  security:
+    jwt-secret: ${JWT_SECRET:change-this-32-char-jwt-secret-key}
+  vector:
+    base-url: ${VECTOR_SERVICE_URL:http://localhost:8082}
+    top-k: 5
+  evaluation:
+    confidence-threshold: 0.70
+    hallucination-threshold: 0.55
+  memory:
+    window-size: 12
+  tokens:
+    balanced-threshold: 1600
+    concise-threshold: 3200
+    max-tool-iterations: 3
+  pricing:
+    ollama-input-per-thousand: 0.0
+    ollama-output-per-thousand: 0.0
+    open-ai-input-per-thousand: 0.005
+    open-ai-output-per-thousand: 0.015
+  agents:
+    symptom:
+      display-name: Symptom Agent
+      collection: symptom_kb
+      system-prompt: prompts/agents/symptom/system.st
+      guardrails-prompt: prompts/agents/symptom/guardrails.st
+      tool-instructions-prompt: prompts/agents/symptom/tools.st
+    allergy:
+      display-name: Allergy Agent
+      collection: allergy_kb
+      system-prompt: prompts/agents/allergy/system.st
+      guardrails-prompt: prompts/agents/allergy/guardrails.st
+      tool-instructions-prompt: prompts/agents/allergy/tools.st
+    medication:
+      display-name: Medication Agent
+      collection: medication_kb
+      system-prompt: prompts/agents/medication/system.st
+      guardrails-prompt: prompts/agents/medication/guardrails.st
+      tool-instructions-prompt: prompts/agents/medication/tools.st
+    triage:
+      display-name: Triage Agent
+      collection: triage_kb
+      system-prompt: prompts/agents/triage/system.st
+      guardrails-prompt: prompts/agents/triage/guardrails.st
+      tool-instructions-prompt: prompts/agents/triage/tools.st
+    financial:
+      display-name: Financial Agent
+      collection: financial_kb
+      system-prompt: prompts/agents/financial/system.st
+      guardrails-prompt: prompts/agents/financial/guardrails.st
+      tool-instructions-prompt: prompts/agents/financial/tools.st
+    fallback:
+      display-name: Fallback Agent
+      collection: fallback_kb
+      system-prompt: prompts/agents/fallback/system.st
+      guardrails-prompt: prompts/agents/fallback/guardrails.st
+      tool-instructions-prompt: prompts/agents/fallback/tools.st

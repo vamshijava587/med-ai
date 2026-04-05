@@ -1,0 +1,11 @@
+target/
+.idea/
+.vscode/
+*.iml
+.DS_Store
+*.log
+.env
+grafana-data/
+prometheus-data/
+mysql-data/
+ollama-data/
