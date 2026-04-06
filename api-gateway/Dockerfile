@@ -1,14 +1,11 @@
 FROM maven:3.9.9-eclipse-temurin-21 AS build
 WORKDIR /workspace
 
-COPY pom.xml pom.xml
-COPY platform-shared/pom.xml platform-shared/pom.xml
-COPY main-orchestrator/pom.xml main-orchestrator/pom.xml
+# api-gateway has no dependency on platform-shared — builds standalone
 COPY api-gateway/pom.xml api-gateway/pom.xml
-COPY vector-data-service/pom.xml vector-data-service/pom.xml
+RUN mvn -f api-gateway/pom.xml dependency:go-offline -q
 COPY api-gateway/src api-gateway/src
-
-RUN mvn -pl api-gateway -am -DskipTests package
+RUN mvn -f api-gateway/pom.xml package -DskipTests
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app

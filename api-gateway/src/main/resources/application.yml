@@ -23,6 +23,8 @@ management:
       probes:
         enabled: true
 
-gateway:
-  security:
-    jwt-secret: ${JWT_SECRET:change-this-32-char-jwt-secret-key}
+# Auth-service integration
+auth:
+  service:
+    url: ${AUTH_SERVICE_URL:http://localhost:8083}
+    internal-api-key: ${INTERNAL_API_KEY:medai-internal-secret}

@@ -1,17 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!--
-  ROOT AGGREGATOR POM — only used for Docker builds and CI.
-  Each service (platform-shared, main-orchestrator, vector-data-service, api-gateway)
-  has its own standalone pom.xml with spring-boot-starter-parent and can be
-  built/run independently.
-
-  To run a service independently:
-    1. cd platform-shared && mvn install -DskipTests   (once, or after any shared change)
-    2. cd <service-folder> && mvn spring-boot:run
-
-  To build everything for Docker (from this root):
-    docker compose up -build
--->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
@@ -21,19 +8,26 @@
     <artifactId>med-ai-platform</artifactId>
     <version>1.0.0</version>
     <packaging>pom</packaging>
-
     <n>med-ai-platform</n>
     <description>Production-ready multi-agent AI platform for medical assistance</description>
 
     <!--
-      Aggregator-only: lists modules so 'mvn install' from root builds them all in order.
-      Services do NOT inherit from this pom — they each use spring-boot-starter-parent.
+      Aggregator only — each module has its own spring-boot-starter-parent.
+      To run a service independently:
+        1. cd platform-shared  && mvn install -DskipTests   (once)
+        2. cd auth-service     && mvn spring-boot:run
+        3. cd main-orchestrator && mvn spring-boot:run
+        4. cd vector-data-service && mvn spring-boot:run
+        5. cd api-gateway      && mvn spring-boot:run
+
+      To build everything for Docker:
+        docker compose up --build
     -->
     <modules>
         <module>platform-shared</module>
+        <module>auth-service</module>
         <module>main-orchestrator</module>
         <module>vector-data-service</module>
         <module>api-gateway</module>
     </modules>
-
 </project>

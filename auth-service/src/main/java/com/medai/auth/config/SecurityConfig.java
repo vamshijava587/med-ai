@@ -1,32 +1,29 @@
-package com.medai.vector.config;
+package com.medai.auth.config;
 
-import com.medai.vector.security.RemoteAuthJwtDecoder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.annotation.method.configuration.EnableReactiveMethodSecurity;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
-import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 
 @Configuration
 @EnableWebFluxSecurity
-@EnableReactiveMethodSecurity
 public class SecurityConfig {
 
+    /**
+     * Auth-service itself does NOT use JWT for incoming requests.
+     * - /auth/**          → public (generate tokens, validate tokens for clients)
+     * - /internal/auth/** → protected by InternalApiKeyFilter (API key header)
+     * - /actuator/**      → public for health/prometheus scraping
+     */
     @Bean
     SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
         return http
             .csrf(ServerHttpSecurity.CsrfSpec::disable)
+            .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
+            .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
             .authorizeExchange(exchange -> exchange
-                .pathMatchers("/actuator/health", "/actuator/prometheus", "/internal/**").permitAll()
-                .anyExchange().authenticated())
-            .oauth2ResourceServer(resourceServer -> resourceServer.jwt(jwt -> {}))
+                .anyExchange().permitAll())
             .build();
-    }
-
-    @Bean
-    ReactiveJwtDecoder reactiveJwtDecoder(RemoteAuthJwtDecoder remoteAuthJwtDecoder) {
-        return remoteAuthJwtDecoder;
     }
 }

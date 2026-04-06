@@ -13,9 +13,7 @@ public class AppProperties {
     private Tokens tokens = new Tokens();
     private Vector vector = new Vector();
     private Pricing pricing = new Pricing();
-    private Security security = new Security();
     private Map<String, AgentDefinition> agents = new HashMap<>();
-    private Providers providers = new Providers();
 
     public Routing getRouting() {
         return routing;
@@ -65,28 +63,12 @@ public class AppProperties {
         this.pricing = pricing;
     }
 
-    public Security getSecurity() {
-        return security;
-    }
-
-    public void setSecurity(Security security) {
-        this.security = security;
-    }
-
     public Map<String, AgentDefinition> getAgents() {
         return agents;
     }
 
     public void setAgents(Map<String, AgentDefinition> agents) {
         this.agents = agents;
-    }
-
-    public Providers getProviders() {
-        return providers;
-    }
-
-    public void setProviders(Providers providers) {
-        this.providers = providers;
     }
 
     public static class Routing {
@@ -230,42 +212,6 @@ public class AppProperties {
 
         public void setOpenAiOutputPerThousand(double openAiOutputPerThousand) {
             this.openAiOutputPerThousand = openAiOutputPerThousand;
-        }
-    }
-
-    public static class Security {
-        private String jwtSecret = "change-this-32-char-jwt-secret-key";
-
-        public String getJwtSecret() {
-            return jwtSecret;
-        }
-
-        public void setJwtSecret(String jwtSecret) {
-            this.jwtSecret = jwtSecret;
-        }
-    }
-
-    public static class Providers {
-        private OpenAI openAi = new OpenAI();
-
-        public OpenAI getOpenAi() {
-            return openAi;
-        }
-
-        public void setOpenAi(OpenAI openAi) {
-            this.openAi = openAi;
-        }
-
-        public static class OpenAI {
-            private boolean enabled = false;
-
-            public boolean isEnabled() {
-                return enabled;
-            }
-
-            public void setEnabled(boolean enabled) {
-                this.enabled = enabled;
-            }
         }
     }
 

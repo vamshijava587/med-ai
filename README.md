@@ -1,40 +1,96 @@
-# Med AI Platform
+# Med-AI Platform
 
-This workspace contains a Java 21, Spring Boot WebFlux, and Spring AI multi-agent platform built as three applications:
+Production-ready multi-agent AI platform for medical assistance.
 
-- `main-orchestrator`: the single-app multi-agent runtime with AI routing, tool orchestration, evaluation, memory, audit logging, and SSE streaming
-- `api-gateway`: Spring Cloud Gateway with JWT validation and rate limiting
-- `vector-data-service`: chunking, embedding, Qdrant indexing, and RAG retrieval
+## Services
 
-## Core architecture
+| Service              | Port  | Description                                      |
+|----------------------|-------|--------------------------------------------------|
+| `auth-service`       | 8083  | Central JWT auth — issues and validates tokens   |
+| `api-gateway`        | 8080  | Spring Cloud Gateway — rate limiting, routing    |
+| `main-orchestrator`  | 8081  | Multi-agent LLM orchestration                    |
+| `vector-data-service`| 8082  | RAG pipeline — Qdrant + Ollama embeddings        |
+| `platform-shared`    | —     | Shared library (DTOs, security models)           |
 
-- Agents inside one orchestrator app: `Symptom`, `Allergy`, `Medication`, `Triage`, `Financial`, `Fallback`
-- AI-driven routing with prompt-based JSON decisions, not keyword routing
-- Primary model provider: Ollama
-- Secondary fallback provider: OpenAI
-- Post-response evaluation for hallucination, confidence, and relevance
-- Safe fallback agent path when validation fails or providers are unavailable
-- Tool loop driven by LLM decisions with Spring AI `@Tool`-annotated methods
-- Sliding-window memory and persistence in MySQL
-- Separate vector collections per agent in Qdrant
-- Docker Compose for local development
+## Architecture
 
-## Run locally
+```
+Client
+  │
+  ▼
+api-gateway :8080
+  │  validates JWT → auth-service :8083
+  │
+  ▼
+main-orchestrator :8081
+  │  validates JWT → auth-service :8083
+  │  RAG search  → vector-data-service :8082
+  │
+  ▼
+vector-data-service :8082
+  │  embeddings  → ollama :11434
+  │  vectors     → qdrant :6333
+  │  (internal/* — no JWT required)
+```
 
-1. Set `OPENAI_API_KEY` if you want OpenAI provider fallback.
-2. Set `JWT_SECRET` to a shared HMAC secret used by all services.
-3. Start the stack:
+## Run with Docker Compose
 
 ```bash
 docker compose up --build
 ```
 
-4. Use the gateway at `http://localhost:8080`.
+First run pulls Ollama models (~4.7 GB). Subsequent runs use cached volumes.
 
-## Example JWT
+## Run Each Service Independently
 
-The services expect an HMAC-signed JWT whose `sub` matches `userId`.
+**Step 1 — Install shared library (once, or after any shared change):**
+```bash
+cd platform-shared
+mvn install -DskipTests
+```
 
-## Important note
+**Step 2 — Start infrastructure:**
+```bash
+docker compose up mysql qdrant ollama ollama-init -d
+```
 
-This environment does not currently include Maven, so the workspace has not been locally compiled here. The Dockerfiles use Maven build stages so the stack can still be built in Docker or in CI.
+**Step 3 — Start auth-service first:**
+```bash
+cd auth-service
+mvn spring-boot:run
+```
+
+**Step 4 — Start other services (each in its own terminal):**
+```bash
+cd vector-data-service && mvn spring-boot:run
+cd main-orchestrator   && mvn spring-boot:run
+cd api-gateway         && mvn spring-boot:run
+```
+
+## Environment Variables
+
+| Variable             | Default                              | Used by                        |
+|----------------------|--------------------------------------|--------------------------------|
+| `JWT_SECRET`         | `change-this-32-char-jwt-secret-key` | auth-service only              |
+| `JWT_TTL_SECONDS`    | `3600`                               | auth-service only              |
+| `INTERNAL_API_KEY`   | `medai-internal-secret`              | all services                   |
+| `AUTH_SERVICE_URL`   | `http://localhost:8083`              | gateway, orchestrator, vector  |
+| `MYSQL_URL`          | `jdbc:mysql://localhost:3306/med_ai` | main-orchestrator              |
+| `VECTOR_SERVICE_URL` | `http://localhost:8082`              | main-orchestrator              |
+| `QDRANT_URL`         | `http://localhost:6333`              | vector-data-service            |
+| `OLLAMA_BASE_URL`    | `http://localhost:11434`             | orchestrator, vector           |
+| `OPENAI_API_KEY`     | `disabled`                           | orchestrator, vector           |
+
+## Getting a Token (Postman / curl)
+
+```bash
+curl -s -X POST http://localhost:8083/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"userId": "user-123", "roles": ["USER"]}' | jq .token
+```
+
+Use the returned token as `Authorization: Bearer <token>` on all `/api/v1/**` requests.
+
+## Flyway Note
+
+Flyway 10+ requires `flyway-mysql` for MySQL 8.x support. It is included in `main-orchestrator/pom.xml`.

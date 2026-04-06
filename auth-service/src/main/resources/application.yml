@@ -1,0 +1,35 @@
+server:
+  port: 8083
+  shutdown: graceful
+
+spring:
+  application:
+    name: auth-service
+  security:
+    user:
+      name: ignored   # disable form-login default user
+      password: ignored
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+
+auth:
+  jwt:
+    secret: ${JWT_SECRET:change-this-32-char-jwt-secret-key}
+    # Token TTL in seconds (default 1 hour)
+    token-ttl-seconds: ${JWT_TTL_SECONDS:3600}
+  # Internal service-to-service API key — used by other services to call /internal/auth/**
+  internal-api-key: ${INTERNAL_API_KEY:medai-internal-secret}
+
+logging:
+  level:
+    root: INFO
+    com.medai: DEBUG

@@ -1,15 +1,16 @@
 FROM maven:3.9.9-eclipse-temurin-21 AS build
 WORKDIR /workspace
 
-COPY pom.xml pom.xml
+# 1. Install platform-shared into the local Maven repo
 COPY platform-shared/pom.xml platform-shared/pom.xml
-COPY main-orchestrator/pom.xml main-orchestrator/pom.xml
-COPY api-gateway/pom.xml api-gateway/pom.xml
-COPY vector-data-service/pom.xml vector-data-service/pom.xml
 COPY platform-shared/src platform-shared/src
-COPY vector-data-service/src vector-data-service/src
+RUN mvn -f platform-shared/pom.xml install -DskipTests
 
-RUN mvn -pl vector-data-service -am -DskipTests package
+# 2. Build vector-data-service
+COPY vector-data-service/pom.xml vector-data-service/pom.xml
+RUN mvn -f vector-data-service/pom.xml dependency:go-offline -q
+COPY vector-data-service/src vector-data-service/src
+RUN mvn -f vector-data-service/pom.xml package -DskipTests
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app

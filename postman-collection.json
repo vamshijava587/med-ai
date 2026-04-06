@@ -1,0 +1,1031 @@
+{
+  "info": {
+    "name": "Med-AI Platform",
+    "description": "Complete Postman collection for the med-ai multi-agent AI platform.\n\n## Setup\n1. Set `BASE_URL` to `http://localhost:8080` (via API Gateway) or per-service ports for direct access.\n2. Run the **Generate JWT** pre-request script once \u2014 it auto-sets `jwt_token` and `user_id`.\n3. All `/api/v1/**` requests require the `Authorization: Bearer {{jwt_token}}` header (auto-set).\n4. `/internal/**` (vector service) and `/actuator/health` are open \u2014 no token needed.\n\n## JWT Secret\nDefault secret: `change-this-32-char-jwt-secret-key`\nTo change, update the `JWT_SECRET` collection variable.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "AUTH_SERVICE_URL",
+      "value": "http://localhost:8083",
+      "type": "string"
+    },
+    {
+      "key": "ORCHESTRATOR_URL",
+      "value": "http://localhost:8081",
+      "type": "string"
+    },
+    {
+      "key": "VECTOR_URL",
+      "value": "http://localhost:8082",
+      "type": "string"
+    },
+    {
+      "key": "INTERNAL_API_KEY",
+      "value": "medai-internal-secret",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "user-123",
+      "type": "string"
+    },
+    {
+      "key": "session_id",
+      "value": "session-abc",
+      "type": "string"
+    },
+    {
+      "key": "token_expires_at",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{jwt_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [],
+  "item": [
+    {
+      "name": "0 \u2013 Auth Service",
+      "description": "Central auth-service on port 8083. Use 'Generate Token' first \u2014 it stores jwt_token automatically. All Chat API requests use that token.",
+      "item": [
+        {
+          "name": "Generate Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('Token returned', () => pm.expect(j.token).to.be.a('string').and.not.empty);",
+                  "pm.collectionVariables.set('jwt_token', j.token);",
+                  "pm.collectionVariables.set('token_expires_at', j.expiresAt);",
+                  "console.log('Token stored. Expires:', j.expiresAt);",
+                  "pm.test('userId matches', () => pm.expect(j.userId).to.equal(pm.collectionVariables.get('user_id')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"roles\": [\"USER\"]\n}"
+            },
+            "url": {
+              "raw": "{{AUTH_SERVICE_URL}}/auth/token",
+              "host": [
+                "{{AUTH_SERVICE_URL}}"
+              ],
+              "path": [
+                "auth",
+                "token"
+              ]
+            },
+            "description": "Calls auth-service to generate a signed HS256 JWT. The Test script auto-saves the token to {{jwt_token}}.\n\nChange `user_id` in collection variables to test different users.\n\n**Roles available:** USER, ADMIN"
+          }
+        },
+        {
+          "name": "Generate Admin Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.collectionVariables.set('jwt_token', j.token);",
+                  "console.log('Admin token stored. Expires:', j.expiresAt);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"roles\": [\"USER\", \"ADMIN\"]\n}"
+            },
+            "url": {
+              "raw": "{{AUTH_SERVICE_URL}}/auth/token",
+              "host": [
+                "{{AUTH_SERVICE_URL}}"
+              ],
+              "path": [
+                "auth",
+                "token"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Validate Token (internal)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('valid=true', () => pm.expect(j.valid).to.be.true);",
+                  "pm.test('subject matches user_id', () => pm.expect(j.claims.subject).to.equal(pm.collectionVariables.get('user_id')));",
+                  "console.log('Token valid until:', j.expiresAt);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Internal-Api-Key",
+                "value": "{{INTERNAL_API_KEY}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{jwt_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{AUTH_SERVICE_URL}}/internal/auth/validate",
+              "host": [
+                "{{AUTH_SERVICE_URL}}"
+              ],
+              "path": [
+                "internal",
+                "auth",
+                "validate"
+              ]
+            },
+            "description": "Called internally by all microservices to validate a token. Protected by X-Internal-Api-Key header.\n\nYou can use this to debug token issues directly."
+          }
+        },
+        {
+          "name": "Validate Token \u2013 Missing API Key (Negative)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Should be 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{jwt_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{AUTH_SERVICE_URL}}/internal/auth/validate",
+              "host": [
+                "{{AUTH_SERVICE_URL}}"
+              ],
+              "path": [
+                "internal",
+                "auth",
+                "validate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Validate Expired/Invalid Token (Negative)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('valid=false', () => pm.expect(pm.response.json().valid).to.be.false);",
+                  "pm.test('errorMessage present', () => pm.expect(pm.response.json().errorMessage).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Internal-Api-Key",
+                "value": "{{INTERNAL_API_KEY}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"this.is.not.a.valid.token\"\n}"
+            },
+            "url": {
+              "raw": "{{AUTH_SERVICE_URL}}/internal/auth/validate",
+              "host": [
+                "{{AUTH_SERVICE_URL}}"
+              ],
+              "path": [
+                "internal",
+                "auth",
+                "validate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Auth Service Health",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{AUTH_SERVICE_URL}}/actuator/health",
+              "host": [
+                "{{AUTH_SERVICE_URL}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "1 \u2013 Health Checks",
+      "item": [
+        {
+          "name": "Gateway Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/actuator/health",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Orchestrator Health (direct)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{ORCHESTRATOR_URL}}/actuator/health",
+              "host": [
+                "{{ORCHESTRATOR_URL}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Vector Service Health (direct)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{VECTOR_URL}}/actuator/health",
+              "host": [
+                "{{VECTOR_URL}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 \u2013 Chat API (via Gateway \u2192 Orchestrator)",
+      "description": "All requests go through API Gateway on port 8080. JWT Bearer token is automatically applied from the collection-level pre-request script.",
+      "item": [
+        {
+          "name": "Chat \u2013 Symptom Query",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has answer', () => {",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.answer).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('Has sessionId', () => pm.expect(pm.response.json().sessionId).to.exist);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{jwt_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"sessionId\": \"{{session_id}}\",\n  \"message\": \"I have a persistent headache and mild fever. What could this indicate?\",\n  \"metadata\": {}\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/chat",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "chat"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Chat \u2013 Allergy Query",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{jwt_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"sessionId\": \"{{session_id}}\",\n  \"message\": \"I am allergic to penicillin. Can I take amoxicillin?\",\n  \"metadata\": {}\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/chat",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "chat"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Chat \u2013 Medication Query",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{jwt_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"sessionId\": \"{{session_id}}\",\n  \"message\": \"What are the side effects of metformin and what dosage is typical for type 2 diabetes?\",\n  \"metadata\": {}\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/chat",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "chat"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Chat \u2013 Triage Query",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{jwt_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"sessionId\": \"{{session_id}}\",\n  \"message\": \"My 5-year-old child has a temperature of 104\u00b0F for 2 days. Should I go to the ER?\",\n  \"metadata\": {}\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/chat",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "chat"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Chat \u2013 Financial Query",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{jwt_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"sessionId\": \"{{session_id}}\",\n  \"message\": \"Does my insurance cover an MRI scan? My plan is BlueCross BlueShield PPO.\",\n  \"metadata\": {\n    \"insuranceProvider\": \"BlueCross BlueShield\",\n    \"insurancePlan\": \"PPO\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/chat",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "chat"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Chat \u2013 Streaming Response (SSE)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{jwt_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"sessionId\": \"{{session_id}}\",\n  \"message\": \"Explain the difference between type 1 and type 2 diabetes.\",\n  \"metadata\": {}\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/chat/stream",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "chat",
+                "stream"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Chat \u2013 401 No Token (Negative Test)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Should return 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"sessionId\": \"{{session_id}}\",\n  \"message\": \"test\",\n  \"metadata\": {}\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/chat",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "chat"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Chat \u2013 403 userId Mismatch (Negative Test)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Should return 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{jwt_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"different-user-999\",\n  \"sessionId\": \"{{session_id}}\",\n  \"message\": \"test\",\n  \"metadata\": {}\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/v1/chat",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "chat"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 \u2013 Vector / Knowledge API (direct :8082, no auth)",
+      "description": "/internal/** is permitted without JWT on the vector service. Call directly on port 8082 \u2014 the gateway does not route /internal paths.",
+      "item": [
+        {
+          "name": "Ingest \u2013 Symptom Knowledge",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('chunksCreated > 0', () => {",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.chunksCreated).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentType\": \"SYMPTOM\",\n  \"documents\": [\n    {\n      \"sourceId\": \"symptom-doc-001\",\n      \"content\": \"Fever above 38\u00b0C combined with stiff neck and sensitivity to light may indicate bacterial meningitis, which requires immediate emergency care. Headache accompanied by fever and body aches is commonly associated with influenza. Persistent fatigue, night sweats, and unexplained weight loss are classic warning signs of lymphoma.\",\n      \"chunkSizeTokens\": 200,\n      \"overlapTokens\": 30,\n      \"metadata\": { \"source\": \"medical-textbook\", \"version\": \"2024\" }\n    },\n    {\n      \"sourceId\": \"symptom-doc-002\",\n      \"content\": \"Chest pain radiating to the left arm, jaw, or back alongside shortness of breath is a hallmark of acute myocardial infarction. Sudden severe headache described as the worst of one's life may indicate a subarachnoid hemorrhage. Abdominal pain in the right lower quadrant that worsens with movement is classic for appendicitis.\",\n      \"chunkSizeTokens\": 200,\n      \"overlapTokens\": 30,\n      \"metadata\": { \"source\": \"emergency-medicine-guide\", \"version\": \"2024\" }\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{VECTOR_URL}}/internal/knowledge/ingest",
+              "host": [
+                "{{VECTOR_URL}}"
+              ],
+              "path": [
+                "internal",
+                "knowledge",
+                "ingest"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ingest \u2013 Allergy Knowledge",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentType\": \"ALLERGY\",\n  \"documents\": [\n    {\n      \"sourceId\": \"allergy-doc-001\",\n      \"content\": \"Penicillin allergy affects approximately 10% of patients. Cross-reactivity with cephalosporins occurs in 1-2% of penicillin-allergic patients. Amoxicillin shares the same beta-lactam ring structure as penicillin and should be avoided in confirmed penicillin allergy. Safe alternatives include azithromycin, clindamycin, or vancomycin depending on the infection type.\",\n      \"chunkSizeTokens\": 200,\n      \"overlapTokens\": 30,\n      \"metadata\": { \"source\": \"allergy-clinical-guide\" }\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{VECTOR_URL}}/internal/knowledge/ingest",
+              "host": [
+                "{{VECTOR_URL}}"
+              ],
+              "path": [
+                "internal",
+                "knowledge",
+                "ingest"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ingest \u2013 Medication Knowledge",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentType\": \"MEDICATION\",\n  \"documents\": [\n    {\n      \"sourceId\": \"med-doc-001\",\n      \"content\": \"Metformin is a biguanide used as first-line treatment for type 2 diabetes. Standard starting dose is 500mg twice daily with meals, titrated up to a maximum of 2000-2500mg per day. Common side effects include nausea, diarrhea, and gastrointestinal upset. Lactic acidosis is a rare but serious complication. Contraindicated in patients with eGFR below 30 mL/min/1.73m\u00b2.\",\n      \"chunkSizeTokens\": 200,\n      \"overlapTokens\": 30,\n      \"metadata\": { \"source\": \"pharmacology-reference\" }\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{VECTOR_URL}}/internal/knowledge/ingest",
+              "host": [
+                "{{VECTOR_URL}}"
+              ],
+              "path": [
+                "internal",
+                "knowledge",
+                "ingest"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ingest \u2013 Financial/Insurance Knowledge",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentType\": \"FINANCIAL\",\n  \"documents\": [\n    {\n      \"sourceId\": \"financial-doc-001\",\n      \"content\": \"MRI scans are typically covered under major medical insurance plans when deemed medically necessary by a licensed physician. BlueCross BlueShield PPO plans generally cover outpatient MRI at 80% after deductible is met when using in-network facilities. Prior authorization may be required for advanced imaging. Out-of-pocket costs range from $200 to $600 depending on the plan and facility.\",\n      \"chunkSizeTokens\": 200,\n      \"overlapTokens\": 30,\n      \"metadata\": { \"source\": \"insurance-coverage-guide\" }\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{VECTOR_URL}}/internal/knowledge/ingest",
+              "host": [
+                "{{VECTOR_URL}}"
+              ],
+              "path": [
+                "internal",
+                "knowledge",
+                "ingest"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Search Knowledge \u2013 Symptom",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has matches array', () => {",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.matches).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentType\": \"SYMPTOM\",\n  \"query\": \"headache and fever symptoms\",\n  \"topK\": 3,\n  \"reRank\": true\n}"
+            },
+            "url": {
+              "raw": "{{VECTOR_URL}}/internal/knowledge/search",
+              "host": [
+                "{{VECTOR_URL}}"
+              ],
+              "path": [
+                "internal",
+                "knowledge",
+                "search"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Search Knowledge \u2013 Medication",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentType\": \"MEDICATION\",\n  \"query\": \"metformin dosage side effects\",\n  \"topK\": 5,\n  \"reRank\": false\n}"
+            },
+            "url": {
+              "raw": "{{VECTOR_URL}}/internal/knowledge/search",
+              "host": [
+                "{{VECTOR_URL}}"
+              ],
+              "path": [
+                "internal",
+                "knowledge",
+                "search"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ingest \u2013 Validation Error (Negative Test)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Should return 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentType\": \"SYMPTOM\",\n  \"documents\": []\n}"
+            },
+            "url": {
+              "raw": "{{VECTOR_URL}}/internal/knowledge/ingest",
+              "host": [
+                "{{VECTOR_URL}}"
+              ],
+              "path": [
+                "internal",
+                "knowledge",
+                "ingest"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 \u2013 Metrics & Observability",
+      "item": [
+        {
+          "name": "Gateway \u2013 Prometheus Metrics",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/actuator/prometheus",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "actuator",
+                "prometheus"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Orchestrator \u2013 Prometheus Metrics (direct)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{ORCHESTRATOR_URL}}/actuator/prometheus",
+              "host": [
+                "{{ORCHESTRATOR_URL}}"
+              ],
+              "path": [
+                "actuator",
+                "prometheus"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Vector \u2013 Prometheus Metrics (direct)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{VECTOR_URL}}/actuator/prometheus",
+              "host": [
+                "{{VECTOR_URL}}"
+              ],
+              "path": [
+                "actuator",
+                "prometheus"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

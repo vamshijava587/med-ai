@@ -1,13 +1,11 @@
 package com.medai.gateway.config;
 
-import java.nio.charset.StandardCharsets;
-import javax.crypto.spec.SecretKeySpec;
+import com.medai.gateway.security.RemoteAuthJwtDecoder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableReactiveMethodSecurity;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
-import org.springframework.security.oauth2.jwt.NimbusReactiveJwtDecoder;
 import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 
@@ -28,8 +26,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    ReactiveJwtDecoder reactiveJwtDecoder(GatewayProperties gatewayProperties) {
-        var secretKey = new SecretKeySpec(gatewayProperties.getJwtSecret().getBytes(StandardCharsets.UTF_8), "HmacSHA256");
-        return NimbusReactiveJwtDecoder.withSecretKey(secretKey).build();
+    ReactiveJwtDecoder reactiveJwtDecoder(RemoteAuthJwtDecoder remoteAuthJwtDecoder) {
+        return remoteAuthJwtDecoder;
     }
 }

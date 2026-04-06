@@ -8,7 +8,6 @@ spring:
   ai:
     ollama:
       base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
-      # Disable health indicator so startup doesn't fail if Ollama is still loading models
       init:
         pull-model-strategy: never
       embedding:
@@ -30,9 +29,14 @@ management:
       probes:
         enabled: true
 
+# Auth-service integration
+auth:
+  service:
+    url: ${AUTH_SERVICE_URL:http://localhost:8083}
+    internal-api-key: ${INTERNAL_API_KEY:medai-internal-secret}
+
 vector:
   qdrant-url: ${QDRANT_URL:http://localhost:6333}
   vector-size: ${VECTOR_SIZE:768}
   default-chunk-size-tokens: 220
   default-chunk-overlap-tokens: 40
-  jwt-secret: ${JWT_SECRET:change-this-32-char-jwt-secret-key}

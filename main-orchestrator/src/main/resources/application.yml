@@ -16,14 +16,12 @@ spring:
   ai:
     ollama:
       base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
-      # Never auto-pull models — ollama-init handles this before this service starts
       init:
         pull-model-strategy: never
       chat:
         options:
           model: ${OLLAMA_CHAT_MODEL:llama3.1:8b}
     openai:
-      # "disabled" default prevents Spring AI throwing a missing-key error when no key is set
       api-key: ${OPENAI_API_KEY:disabled}
       chat:
         options:
@@ -48,9 +46,13 @@ logging:
     root: INFO
     com.medai: INFO
 
+# Auth-service integration
+auth:
+  service:
+    url: ${AUTH_SERVICE_URL:http://localhost:8083}
+    internal-api-key: ${INTERNAL_API_KEY:medai-internal-secret}
+
 app:
-  security:
-    jwt-secret: ${JWT_SECRET:change-this-32-char-jwt-secret-key}
   vector:
     base-url: ${VECTOR_SERVICE_URL:http://localhost:8082}
     top-k: 5
@@ -68,9 +70,6 @@ app:
     ollama-output-per-thousand: 0.0
     open-ai-input-per-thousand: 0.005
     open-ai-output-per-thousand: 0.015
-  providers:
-    openai:
-      enabled: ${OPENAI_ENABLED:false}
   agents:
     symptom:
       display-name: Symptom Agent

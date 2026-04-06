@@ -14,7 +14,7 @@
     <groupId>com.medai</groupId>
     <artifactId>main-orchestrator</artifactId>
     <version>1.0.0</version>
-    <name>main-orchestrator</name>
+    <n>main-orchestrator</n>
 
     <properties>
         <java.version>21</java.version>
